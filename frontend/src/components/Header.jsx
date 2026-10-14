@@ -9,7 +9,7 @@ export default function Header() {
             <span className={styles.icon}>⚔️</span>
             <span className={styles.name}>QuoteShield</span>
           </div>
-          <span className={styles.badge}>Mistral 7B · Local</span>
+          <span className={styles.badge}>Open-source AI · Groq</span>
         </div>
         <p className={styles.tagline}>Paste the chaos. Get a watertight scope.</p>
       </div>

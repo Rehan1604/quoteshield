@@ -61,12 +61,11 @@ export default function InputPanel({ onGenerate, loading, error }) {
         <p className={styles.sub}>
           Paste whatever they sent you — a WhatsApp message, a voice note transcript,
           a rambling email. QuoteShield turns it into a professional scope doc with
-          milestones, deliverables, and a "not included" clause. Runs on Mistral 7B,
-          entirely on your laptop.
+          milestones, deliverables, and a "not included" clause — in seconds.
         </p>
         <div className={styles.pillRow}>
-          <span className={styles.pill}>🔒 100% offline</span>
-          <span className={styles.pill}>⚡ No API key</span>
+          <span className={styles.pill}>⚡ Ready in seconds</span>
+          <span className={styles.pill}>🆓 Free, no sign-up</span>
           <span className={styles.pill}>📋 Copy-ready output</span>
         </div>
       </div>

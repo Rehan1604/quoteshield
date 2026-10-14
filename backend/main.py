@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from groq import Groq
+import httpx
 import json
 import re
 import os
@@ -17,6 +17,7 @@ app.add_middleware(
 )
 
 MODEL = "mixtral-8x7b-32768"
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 SYSTEM_PROMPT = """You are QuoteShield, a senior freelance consultant who writes airtight project scopes.
 Take the client brief and produce a sharp, professional scope of work.
@@ -76,21 +77,35 @@ async def generate_scope(req: ProjectRequest):
     if req.context:
         user_message = f"Additional context: {req.context}\n\nClient brief: {req.description}"
 
-    try:
-        client = Groq(api_key=api_key)
-        completion = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": f"Client brief: {user_message}\n\nJSON only:"},
-            ],
-            temperature=0.25,
-            max_tokens=1500,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Groq API error: {str(e)}")
+    payload = {
+        "model": MODEL,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"Client brief: {user_message}\n\nJSON only:"},
+        ],
+        "temperature": 0.25,
+        "max_tokens": 1500,
+    }
 
-    raw = completion.choices[0].message.content or ""
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                GROQ_URL,
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+            )
+            response.raise_for_status()
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Groq API timed out")
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=502, detail=f"Groq API error: {e.response.text}")
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Request failed: {str(e)}")
+
+    raw = response.json()["choices"][0]["message"]["content"] or ""
 
     cleaned = re.sub(r"```(?:json)?|```", "", raw).strip()
 

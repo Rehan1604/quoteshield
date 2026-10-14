@@ -70,7 +70,7 @@ async def generate_scope(req: ProjectRequest):
 
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
-        raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured on server")
 
     user_message = req.description
     if req.context:
@@ -92,10 +92,8 @@ async def generate_scope(req: ProjectRequest):
 
     raw = completion.choices[0].message.content or ""
 
-    # Strip markdown fences if model wraps anyway
     cleaned = re.sub(r"```(?:json)?|```", "", raw).strip()
 
-    # Find the JSON object
     match = re.search(r"\{.*\}", cleaned, re.DOTALL)
     if not match:
         raise HTTPException(

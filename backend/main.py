@@ -9,7 +9,12 @@ app = FastAPI(title="QuoteShield API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://quoteshield-ten.vercel.app",
+        "https://quoteshield-a1nyw9j42-rehan-6df9.vercel.app",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -17,19 +22,33 @@ app.add_middleware(
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL = "mistral"
 
-SYSTEM_PROMPT = """You are QuoteShield. Turn client briefs into tight, professional scope-of-work JSON.
+SYSTEM_PROMPT = """You are QuoteShield, a senior freelance consultant who writes airtight project scopes.
+Take the client brief and produce a sharp, professional scope of work.
 
-RULES:
-1. Deliverables: specific and complete. NOT "Shop page" — YES "E-commerce shop page with product grid, filters, cart, Razorpay checkout".
-2. Milestones: testable outcome only. NOT "Development" — YES "Responsive site deployed to staging with all pages and checkout live".
-3. No vague words (premium/clean/modern) — translate them concretely.
-4. not_included: thorough — every adjacent service clients assume is included.
-5. assumptions: binding — name exactly what client delivers and by when.
-6. estimated_hours: realistic (discovery + design + dev + QA + revisions).
-7. revision_policy: define what IS a revision, count included, cost after.
+RULES — follow all of them:
+1. Deliverables must be specific and complete. Bad: "Shop page". Good: "E-commerce shop page with product grid, category filters, cart, and Razorpay checkout integration". Each deliverable must be specific enough that both parties know exactly when it is done.
+2. Milestone descriptions must state a testable outcome. Bad: "Development". Good: "Fully functional responsive website deployed to staging URL with all pages live and shop checkout working end-to-end".
+3. Never use vague quality words (premium, clean, modern, simple) without defining them concretely. If the client used them, translate: "premium" = "custom typography, consistent 8px spacing grid, high-res imagery, smooth micro-animations".
+4. Not Included must be thorough — list every adjacent thing clients commonly assume is included.
+5. Assumptions must be binding and specific. Name exactly what the client delivers and by when. Example: "Client delivers all product images (min 1200x1200px) and copy text by end of Day 3 of Week 1 — delays will push the timeline accordingly".
+6. Hours estimate must be realistic. Think through: discovery + design + development + integration + QA + revisions. Don't lowball.
+7. Revision policy must define what counts as a revision (changes after sign-off = new revision), how many included, and what happens after.
 
-Reply with ONLY this JSON, no fences:
-{"project_title":"...","summary":"2-3 sentences: what, how, success criteria","deliverables":["..."],"milestones":[{"name":"...","description":"testable outcome","duration":"X days"}],"not_included":["..."],"estimated_hours":0,"assumptions":["..."],"revision_policy":"..."}"""
+You MUST respond with ONLY valid JSON. No markdown fences, no explanation, nothing before or after the JSON.
+
+JSON schema:
+{
+  "project_title": "short, specific title",
+  "summary": "2-3 sentences covering what the client wants, the technical approach, and the success criteria",
+  "deliverables": ["specific, complete deliverable 1", "specific, complete deliverable 2"],
+  "milestones": [
+    {"name": "milestone name", "description": "specific testable outcome", "duration": "X days/weeks"}
+  ],
+  "not_included": ["thorough list of exclusions"],
+  "estimated_hours": 40,
+  "assumptions": ["specific binding assumption with client responsibility named"],
+  "revision_policy": "precise policy defining what is a revision, count included, and overage terms"
+}"""
 
 
 class ProjectRequest(BaseModel):
@@ -60,21 +79,20 @@ async def generate_scope(req: ProjectRequest):
 
     user_message = req.description
     if req.context:
-        user_message = f"Additional context: {req.context}\n\nProject description: {req.description}"
+        user_message = f"Additional context: {req.context}\n\nClient brief: {req.description}"
 
     payload = {
         "model": MODEL,
-        "prompt": f"{SYSTEM_PROMPT}\n\nClient brief: {user_message}\n\nRespond with only the JSON object:",
+        "prompt": f"{SYSTEM_PROMPT}\n\nClient brief: {user_message}\n\nJSON only:",
         "stream": False,
         "options": {
             "temperature": 0.25,
             "top_p": 0.9,
-            "num_predict": 1200,
         }
     }
 
     try:
-        async with httpx.AsyncClient(timeout=180) as client:
+        async with httpx.AsyncClient(timeout=120) as client:
             response = await client.post(OLLAMA_URL, json=payload)
             response.raise_for_status()
     except httpx.ConnectError:
@@ -103,6 +121,7 @@ async def generate_scope(req: ProjectRequest):
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=422, detail=f"JSON parse error: {e}")
 
+    # Ensure red_flags key is absent so frontend never renders the banner
     data.pop('red_flags', None)
 
     return data

@@ -1,9 +1,10 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import httpx
+from groq import Groq
 import json
 import re
+import os
 
 app = FastAPI(title="QuoteShield API")
 
@@ -15,8 +16,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL = "mistral"
+MODEL = "mixtral-8x7b-32768"
 
 SYSTEM_PROMPT = """You are QuoteShield, a senior freelance consultant who writes airtight project scopes.
 Take the client brief and produce a sharp, professional scope of work.
@@ -58,14 +58,9 @@ def root():
 
 
 @app.get("/health")
-async def health():
-    try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            r = await client.get("http://localhost:11434/api/tags")
-            models = [m["name"] for m in r.json().get("models", [])]
-            return {"ollama": "ok", "models": models}
-    except Exception as e:
-        return {"ollama": "unreachable", "error": str(e)}
+def health():
+    key = os.environ.get("GROQ_API_KEY", "")
+    return {"groq": "configured" if key else "missing GROQ_API_KEY"}
 
 
 @app.post("/generate")
@@ -73,33 +68,29 @@ async def generate_scope(req: ProjectRequest):
     if not req.description.strip():
         raise HTTPException(status_code=400, detail="Description cannot be empty")
 
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
+
     user_message = req.description
     if req.context:
         user_message = f"Additional context: {req.context}\n\nClient brief: {req.description}"
 
-    payload = {
-        "model": MODEL,
-        "prompt": f"{SYSTEM_PROMPT}\n\nClient brief: {user_message}\n\nJSON only:",
-        "stream": False,
-        "options": {
-            "temperature": 0.25,
-            "top_p": 0.9,
-        }
-    }
-
     try:
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(OLLAMA_URL, json=payload)
-            response.raise_for_status()
-    except httpx.ConnectError:
-        raise HTTPException(
-            status_code=503,
-            detail="Cannot reach Ollama. Make sure it's running: ollama serve"
+        client = Groq(api_key=api_key)
+        completion = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": f"Client brief: {user_message}\n\nJSON only:"},
+            ],
+            temperature=0.25,
+            max_tokens=1500,
         )
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Model took too long to respond")
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Groq API error: {str(e)}")
 
-    raw = response.json().get("response", "")
+    raw = completion.choices[0].message.content or ""
 
     # Strip markdown fences if model wraps anyway
     cleaned = re.sub(r"```(?:json)?|```", "", raw).strip()
@@ -117,7 +108,6 @@ async def generate_scope(req: ProjectRequest):
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=422, detail=f"JSON parse error: {e}")
 
-    # Ensure red_flags key is absent so frontend never renders the banner
     data.pop('red_flags', None)
 
     return data

@@ -9,12 +9,8 @@ app = FastAPI(title="QuoteShield API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "https://quoteshield-ten.vercel.app",
-        "https://quoteshield-a1nyw9j42-rehan-6df9.vercel.app",
-    ],
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -15,7 +15,7 @@ export default function App() {
     setScope(null)
 
     try {
-      const res = await fetch('http://localhost:8000/generate', {
+      const res = await fetch('https://quoteshield.onrender.com/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ description, context }),
